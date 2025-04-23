@@ -28,8 +28,8 @@
       border-width: 3px;
       border-style: solid;
 
-      height: 5em;
-      width: 5em;
+      height: 3em;
+      width: 3em;
 
       text-align: center;
       vertical-align: middle;
@@ -47,6 +47,10 @@
       background-color: #bfbfbf;
     }
 
+    .wall {
+      background-color: #cfbfaf;
+    }
+
     .stepped {
       border-color: goldenrod;
     }
@@ -55,8 +59,8 @@
       margin: 0.5em;
 
       display: grid;
-      grid-template-rows: repeat(3, 4em);
-      grid-template-columns: repeat(3, 4em);
+      grid-template-rows: repeat(3, 3em);
+      grid-template-columns: repeat(3, 3em);
       gap: 0.5em;
     }
 
@@ -98,21 +102,38 @@
     <input type="button" class="input-right" value=">" onclick="move('right')">
     <input type="button" class="input-left" value="<" onclick="move('left')">
   </div>
-  <span id="message"></span>
+
+  <!-- Other -->
+  <div>
+    <span id="message"></span>
+    <a href="./index.html">New Game</a>
+
+  </div>
 </body>
 
 <script>
   const table = document.getElementById("table")
   const message = document.getElementById("message")
-  const cellMapping = {
-    "start": "s",
-    "end": "!",
-    "road": "",
-    "up": "⇑",
-    "down": "⇓",
-    "right": "⇒",
-    "left": "⇐"
+
+  // Algorithm: Linear congruential generator
+  class Random {
+    seed = 0
+    constructor(seed) {
+      this.seed = seed
+    }
+    next() {
+      this.seed = (this.seed * 1566083941 + 1) >>> 0 // round uint32
+      return this.seed / 4294967296
+    }
   }
+  const url = new URL(window.location.href)
+  let seed = url.searchParams.get("seed")
+  if (!seed) {
+    url.searchParams.set("seed", new Date().getTime() % 4294967296)
+    window.location.href = url
+  }
+  const rand = new Random(seed ? parseInt(seed) : 0)
+
   const vector = {
     "up": [-1, 0],
     "down": [1, 0],
@@ -120,12 +141,11 @@
     "left": [0, -1],
   }
 
-  const mapSize = 7
+  const mapSize = 11
   const map = Array(mapSize)
-  for (let i = 0; i < mapSize; i++) {
-    map[i] = Array(mapSize).fill("blank")
-  }
+  const startPos = [Math.floor(rand.next() * mapSize), Math.floor(rand.next() * mapSize)]
   let walkCount = 0
+  // blank map
   for (let x = 0; x < mapSize; x++) {
     const tr = document.createElement("tr")
     for (let y = 0; y < mapSize; y++) {
@@ -136,26 +156,35 @@
     table.append(tr)
   }
 
-  const startPos = [Math.floor(Math.random() * mapSize), Math.floor(Math.random() * mapSize)]
-  map[startPos[0]][startPos[1]] = "start"
-
   function generate() {
+    // map data initialize
+    for (let i = 0; i < mapSize; i++) {
+      map[i] = Array(mapSize).fill("blank")
+    }
+    map[startPos[0]][startPos[1]] = "start"
+
+    // random wall
+    const walls = Math.round(mapSize * mapSize * 0.05)
+    for (let n = 0; n < walls; n++) {
+      const wallX = Math.floor(rand.next() * mapSize);
+      const wallY = Math.floor(rand.next() * mapSize);
+      if (map[wallX][wallY] === "blank" && (wallX !== startPos[0] || wallY !== startPos[1])) {
+        map[wallX][wallY] = "wall";
+      }
+    }
+
+    // generate path
     const maxWalk = Math.round(mapSize * mapSize * 0.8)
     let currentX = startPos[0]
     let currentY = startPos[1]
-    let prevDirection = ""
     for (let walk = 0; walk < maxWalk; walk++) {
       const directions = nextDirections(currentX, currentY)
       directions.sort((a, b) => {
-        let scoreA = countAvailableCell(currentX, currentY, a)
-        if (a != prevDirection) {
-          scoreA += 0.5
+        if (walk % 3) {
+        return countAvailableCell(currentX, currentY, b) - countAvailableCell(currentX, currentY, a)
+        } else {
+          return countAvailableCell(currentX, currentY, a) - countAvailableCell(currentX, currentY, b)
         }
-        let scoreB = countAvailableCell(currentX, currentY, b)
-        if (b != prevDirection) {
-          scoreB += 0.5
-        }
-        return scoreA - scoreB
       })
 
       if (directions.length == 0) {
@@ -167,16 +196,15 @@
       const newY = currentY + vector[directions[0]][1]
 
       map[newX][newY] = "road"
-      if (Math.random() <= 0.1 && walk > 0) {
+      if (rand.next() <= 0.2 && walk > 0) {
         map[currentX][currentY] = directions[0]
       }
       currentX = newX
       currentY = newY
-      prevDirection = directions[0]
       walkCount++
     }
+    console.log("finish")
     map[currentX][currentY] = "end"
-
 
     for (let x = 0; x < mapSize; x++) {
       for (let y = 0; y < mapSize; y++) {
@@ -213,6 +241,10 @@
             target.innerText = "E"
             break
           }
+          case "wall": {
+            target.classList.add("wall")
+            break
+          }
           default: {
             target.classList.add("blank")
             break
@@ -221,12 +253,12 @@
       }
     }
   }
-
+  generate()
 
   // Fisher Yates shuffle
   function shuffle(array) {
     for (let i = array.length - 1; i > 0; i--) {
-      let j = Math.floor(Math.random() * (i + 1));
+      let j = Math.floor(rand.next() * (i + 1));
       [array[i], array[j]] = [array[j], array[i]];
     }
     return array
@@ -269,7 +301,15 @@
 
   let nowX = startPos[0]
   let nowY = startPos[1]
+  let status = "standby"
+  let startTime = 0
   function move(d) {
+    if (status == "standby") {
+      startTime = new Date().getTime()
+      status = "playing"
+    }
+    if (status == "finish") return
+
     console.log("prev:", nowX, nowY)
     const newX = nowX + vector[d][0]
     const newY = nowY + vector[d][1]
@@ -302,16 +342,24 @@
     walkCount--
 
     if (map[nowX][nowY] == "end") {
+      status = "finish"
       if (walkCount == 0) {
-        message.innerText = "Game Clear"
+        message.innerText = `Game Clear ${timestamp(new Date().getTime() - startTime)}`
         return
       }
-      message.innerText = "Game Fail!"
+      message.innerText = `Game Fail! ${timestamp(new Date().getTime() - startTime)}`
       return
     }
   }
 
-  generate()
+  function timestamp(t) {
+    const ms = t % 1000
+    t = (t - ms) / 1000
+    const sec = t % 60
+    t = (t - sec) / 60
+    return `${sec.toString().padStart(2, "0")}.${ms.toString().padStart(3, "0")}[sec]`
+  }
+
 
   document.addEventListener("keydown", (e) => {
     console.log(e)
@@ -338,6 +386,8 @@
       }
     }
   })
+
+
 </script>
 
 </html>

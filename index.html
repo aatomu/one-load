@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>one-stroke</title>
+  <style>
+    table {
+      border-spacing: 0;
+    }
+
+    td {
+      border-color: black;
+      border-width: 3px;
+      border-style: solid;
+
+      height: 2em;
+      width: 2em;
+
+      text-align: center;
+      vertical-align: middle;
+    }
+
+    .start {
+      background-color: #00bf00;
+    }
+
+    .end {
+      background-color: #00bfbf;
+    }
+
+    .blank {
+      background-color: #bfbfbf;
+    }
+
+    .stepped {
+      border-color: goldenrod;
+    }
+  </style>
+</head>
+
+<body>
+  <table>
+    <tbody id="table">
+
+    </tbody>
+  </table>
+  <input type="button" value="^" onclick="move('up')">
+  <input type="button" value="v" onclick="move('down')">
+  <input type="button" value=">" onclick="move('right')">
+  <input type="button" value="<" onclick="move('left')">
+  <span id="message"></span>
+</body>
+
+<script>
+  const table = document.getElementById("table")
+  const message = document.getElementById("message")
+  const cellMapping = {
+    "start": "s",
+    "end": "!",
+    "road": "",
+    "up": "⇑",
+    "down": "⇓",
+    "right": "⇒",
+    "left": "⇐"
+  }
+  const vector = {
+    "up": [-1, 0],
+    "down": [1, 0],
+    "right": [0, 1],
+    "left": [0, -1],
+  }
+
+  const mapSize = 7
+  const map = Array(mapSize)
+  for (let i = 0; i < mapSize; i++) {
+    map[i] = Array(mapSize).fill("blank")
+  }
+  let walkCount = 0
+  for (let x = 0; x < mapSize; x++) {
+    const tr = document.createElement("tr")
+    for (let y = 0; y < mapSize; y++) {
+      const td = document.createElement("td")
+      td.id = `${x}-${y}`
+      tr.append(td)
+    }
+    table.append(tr)
+  }
+
+  const startPos = [Math.floor(Math.random() * mapSize), Math.floor(Math.random() * mapSize)]
+  map[startPos[0]][startPos[1]] = "start"
+
+  function generate() {
+    const maxWalk = Math.round(mapSize * mapSize * 0.8)
+    let currentX = startPos[0]
+    let currentY = startPos[1]
+    let prevDirection = ""
+    for (let walk = 0; walk < maxWalk; walk++) {
+      const directions = nextDirections(currentX, currentY)
+      directions.sort((a, b) => {
+        let scoreA = countAvailableCell(currentX, currentY, a)
+        if (a != prevDirection) {
+          scoreA += 0.5
+        }
+        let scoreB = countAvailableCell(currentX, currentY, b)
+        if (b != prevDirection) {
+          scoreB += 0.5
+        }
+        return scoreA - scoreB
+      })
+
+      if (directions.length == 0) {
+        console.log("break")
+        break
+      }
+
+      const newX = currentX + vector[directions[0]][0]
+      const newY = currentY + vector[directions[0]][1]
+
+      map[newX][newY] = "road"
+      if (Math.random() <= 0.1 && walk > 0) {
+        map[currentX][currentY] = directions[0]
+      }
+      currentX = newX
+      currentY = newY
+      prevDirection = directions[0]
+      walkCount++
+    }
+    map[currentX][currentY] = "end"
+
+
+    for (let x = 0; x < mapSize; x++) {
+      for (let y = 0; y < mapSize; y++) {
+        const target = document.getElementById(`${x}-${y}`)
+        switch (map[x][y]) {
+          case "start": {
+            target.classList.add("start")
+            target.classList.add("stepped")
+            map[x][y] = "stepped"
+            target.innerText = "S"
+            break
+          }
+          case "road": {
+            break
+          }
+          case "up": {
+            target.innerText = "^"
+            break
+          }
+          case "down": {
+            target.innerText = "v"
+            break
+          }
+          case "right": {
+            target.innerText = ">"
+            break
+          }
+          case "left": {
+            target.innerText = "<"
+            break
+          }
+          case "end": {
+            target.classList.add("end")
+            target.innerText = "E"
+            break
+          }
+          default: {
+            target.classList.add("blank")
+            break
+          }
+        }
+      }
+    }
+  }
+
+
+  // Fisher Yates shuffle
+  function shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+      let j = Math.floor(Math.random() * (i + 1));
+      [array[i], array[j]] = [array[j], array[i]];
+    }
+    return array
+  }
+
+  /**
+   * @param {number} x
+   * @param {number} y
+   * @return {Array<string>}
+  */
+  function nextDirections(x, y) {
+    let available = []
+    for (v of Object.keys(vector)) {
+      const newX = x + vector[v][0]
+      const newY = y + vector[v][1]
+
+      if (newX < 0 || newX >= mapSize || newY < 0 || newY >= mapSize) {
+        continue
+      }
+
+      if (map[newX][newY] != "blank") {
+        continue
+      }
+      available.push(v)
+    }
+    return shuffle(available)
+  }
+
+  /**
+   * @param {number} x
+   * @param {number} y
+   * @param {string} d
+   * @return {number}
+  */
+  function countAvailableCell(x, y, d) {
+    const newX = x + vector[d][0]
+    const newY = y + vector[d][1]
+    return nextDirections(newX, newY).length
+  }
+
+  let nowX = startPos[0]
+  let nowY = startPos[1]
+  function move(d) {
+    console.log("prev:", nowX, nowY)
+    const newX = nowX + vector[d][0]
+    const newY = nowY + vector[d][1]
+
+    if (newX < 0 || newX >= mapSize || newY < 0 || newY >= mapSize) {
+      message.innerText = "[WARN]: Area Over."
+      return
+    }
+
+    if (map[nowX][nowY] == "up" || map[nowX][nowY] == "down" || map[nowX][nowY] == "right" || map[nowX][nowY] == "left") {
+      if (map[nowX][nowY] != d) {
+        message.innerText = "[WARN]: Missing Direction Specification."
+        return
+      }
+    }
+    if (map[newX][newY] == "stepped") {
+      message.innerText = "[WARN]: Not Allow Back"
+      return
+    }
+    if (map[newX][newY] == "blank") {
+      message.innerText = "[WARN]: Not Allow Move To Wall"
+      return
+    }
+
+    message.innerText = ""
+    document.getElementById(`${newX}-${newY}`).classList.add("stepped")
+    map[nowX][nowY] = "stepped"
+    nowX = newX
+    nowY = newY
+    walkCount--
+
+    if (map[nowX][nowY] == "end") {
+      if (walkCount==0) {
+        message.innerText = "Game Clear"
+        return
+      }
+      message.innerText = "Game Fail!"
+      return
+    }
+  }
+
+  generate()
+
+  document.addEventListener("keydown", (e) => {
+    console.log(e)
+    switch (e.code) {
+      case "ArrowUp":
+      case "KeyW": {
+        move("up")
+        break
+      }
+      case "ArrowDown":
+      case "KeyS": {
+        move("down")
+        break
+      }
+      case "ArrowRight":
+      case "KeyD": {
+        move("right")
+        break
+      }
+      case "ArrowLeft":
+      case "KeyA": {
+        move("left")
+        break
+      }
+    }
+  })
+</script>
+
+</html>
